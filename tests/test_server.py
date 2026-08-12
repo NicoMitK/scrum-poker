@@ -128,9 +128,10 @@ class RevealTests(RoomTestCase):
         self.assertEqual(self.participant("Alex")["vote"], "3")
 
     def test_statistics_ignore_coffee(self):
+        skipper = self.room.join("Skipper", "technical_operations")
         self.room.vote(self.dev_a, "0.25")
         self.room.vote(self.dev_b, "21+")
-        self.room.vote(self.po, "coffee")
+        self.room.vote(skipper, "coffee")
         self.room.reveal(self.po)
         stats = self.room.snapshot()["stats"]
         self.assertAlmostEqual(stats["average"], 10.62)
@@ -155,6 +156,40 @@ class RevealTests(RoomTestCase):
     def test_no_statistics_before_reveal(self):
         self.room.vote(self.dev_a, "5")
         self.assertIsNone(self.room.snapshot()["stats"])
+
+
+class ProductOwnerDoesNotVoteTests(RoomTestCase):
+    def test_product_owner_cannot_vote(self):
+        self.assertFalse(self.room.vote(self.po, "5"))
+        self.assertIsNone(self.room.personal_state(self.po)["you"]["vote"])
+
+    def test_product_owner_is_never_counted_as_voted(self):
+        self.room.vote(self.po, "8")
+        self.room.vote(self.dev_a, "8")
+
+        state = self.room.snapshot()
+        self.assertEqual(state["votedCount"], 1)
+        po_seat = next(p for p in state["participants"] if p["name"] == "Max Mustermann")
+        self.assertFalse(po_seat["hasVoted"])
+
+    def test_product_owner_never_appears_in_the_statistics(self):
+        self.room.vote(self.po, "13")
+        self.room.vote(self.dev_a, "3")
+        self.room.vote(self.dev_b, "3")
+        self.room.reveal(self.po)
+
+        stats = self.room.snapshot()["stats"]
+        self.assertEqual(stats["average"], 3)
+        self.assertTrue(stats["consensus"])
+
+    def test_product_owner_seat_shows_no_card_after_reveal(self):
+        self.room.vote(self.dev_a, "5")
+        self.room.reveal(self.po)
+
+        po_seat = next(
+            p for p in self.room.snapshot()["participants"] if p["name"] == "Max Mustermann"
+        )
+        self.assertIsNone(po_seat["vote"])
 
 
 class ResetTests(RoomTestCase):

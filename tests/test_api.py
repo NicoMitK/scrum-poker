@@ -138,6 +138,20 @@ class ServerTests(unittest.TestCase):
         status, _ = self.post("/api/vote", {"card": "5"}, token="bogus")
         self.assertEqual(status, 401)
 
+    def test_product_owner_vote_is_ignored(self):
+        po = self.join("PO", "product_owner")
+        dev = self.join("Dev", "technical_operations")
+
+        self.post("/api/vote", {"card": "8"}, token=po)
+        self.post("/api/vote", {"card": "8"}, token=dev)
+
+        state = self.get("/api/state", token=po)
+        self.assertIsNone(state["you"]["vote"])
+        self.assertEqual(state["votedCount"], 1)
+
+        self.post("/api/leave", token=po)
+        self.post("/api/leave", token=dev)
+
     def test_restart_is_product_owner_only_and_empties_the_room(self):
         po = self.join("PO", "product_owner")
         dev = self.join("Dev", "technical_operations")

@@ -7,12 +7,14 @@ Real-time planning poker for the team. Pure Python standard library, no dependen
 ## What it does
 
 - Pick a name and a role: **Product Owner** 👑 or **Technical Operations** 🛠️
-- Everyone sits around a table and picks a card: `0.25 · 0.5 · 1 · 2 · 3 · 5 · 8 · 13 · 21+ · ☕`
-- Cards stay face down until the Product Owner hits **Reveal cards**
+- Technical Operations estimate with a hand of cards:
+  `0.25 · 0.5 · 1 · 2 · 3 · 5 · 8 · 13 · 21+ · ☕`
+- The Product Owner does not estimate. Where the others have their cards, they get the
+  controls: **Reveal cards**, **Reset votes** / **New round**, **Restart voting** (back to
+  round 1). They can also remove somebody via the **×** on their seat.
+- Cards stay face down until the Product Owner reveals them
 - Revealing before everybody voted asks for confirmation and names who is missing
 - After reveal: average, lowest, highest, 🎉 on consensus
-- Product Owner only: **Reveal cards**, **Reset votes** (same round), **New round**,
-  **Restart voting** (back to round 1), and removing a participant via the **×** on their seat
 - The table resets itself to round 1 as soon as the last person leaves
 - Everything updates live for everybody — no refresh
 
@@ -42,7 +44,7 @@ Visitors never need a login — only the port/tunnel has to be **Public**.
 ## Development
 
 ```powershell
-python -m unittest discover -s tests -v   # 46 tests
+python -m unittest discover -s tests -v   # 51 tests
 ruff check .                              # linter
 ```
 
@@ -66,7 +68,7 @@ secret (otherwise Render just auto-deploys on push).
 | `GET` | `/api/state` | Current state for the caller (`X-Poker-Token` header) |
 | `GET` | `/api/events?token=…` | Server-Sent Events stream |
 | `POST` | `/api/join` | `{name, role}` → `{token, state}` |
-| `POST` | `/api/vote` | `{card}` — the same card again takes it back |
+| `POST` | `/api/vote` | `{card}` — the same card again takes it back (Technical Operations only) |
 | `POST` | `/api/reveal` | Product Owner only |
 | `POST` | `/api/reset` | Product Owner only — next round |
 | `POST` | `/api/restart` | Product Owner only — back to round 1 |

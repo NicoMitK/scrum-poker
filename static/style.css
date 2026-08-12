@@ -277,6 +277,14 @@ input[type="text"]:focus { border-color: var(--accent); }
 
 .seat-card.pending { border-style: dashed; }
 
+/* The Product Owner facilitates and has no card of their own. */
+.seat-card.spectator {
+  border-style: dotted;
+  border-color: rgba(245, 182, 66, 0.4);
+  background: rgba(245, 182, 66, 0.07);
+  font-size: 24px;
+}
+
 .seat-card.hidden-vote {
   background: repeating-linear-gradient(45deg, #24466b, #24466b 6px, #1b3550 6px, #1b3550 12px);
   border-color: #4b7cb0;
@@ -347,6 +355,14 @@ input[type="text"]:focus { border-color: var(--accent); }
 }
 
 .card:hover:not(:disabled) { transform: translateY(-10px); border-color: var(--accent); }
+
+/* Product Owner controls sit where the estimators have their cards. */
+.hand.controls {
+  align-items: center;
+  gap: 12px;
+  padding-top: 0;
+  min-height: 96px;
+}
 .card.selected {
   transform: translateY(-14px);
   border-color: var(--accent);

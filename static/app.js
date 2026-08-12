@@ -38,6 +38,7 @@ const dom = {
   tableStatus: el("table-status"),
   tableActions: el("table-actions"),
   results: el("results"),
+  handTitle: el("hand-title"),
   hand: el("hand"),
   confirmModal: el("confirm-modal"),
   confirmText: el("confirm-text"),
@@ -167,8 +168,7 @@ function cardLabel(value) {
 }
 
 function requiredVoters(participants) {
-  const estimators = participants.filter((p) => p.role === "technical_operations");
-  return estimators.length ? estimators : participants;
+  return participants.filter((p) => p.role === "technical_operations");
 }
 
 function render(next) {
@@ -184,7 +184,7 @@ function render(next) {
 
   renderSeats();
   renderTable();
-  renderHand();
+  renderHandArea();
 }
 
 function renderSeats() {
@@ -200,7 +200,11 @@ function renderSeats() {
 
     const card = document.createElement("div");
     card.className = "seat-card";
-    if (state.revealed && participant.vote !== null) {
+    if (participant.role === "product_owner") {
+      card.classList.add("spectator");
+      card.textContent = ROLE_ICONS.product_owner;
+      card.title = "The Product Owner does not estimate";
+    } else if (state.revealed && participant.vote !== null) {
       card.classList.add("revealed");
       card.textContent = cardLabel(participant.vote);
     } else if (participant.hasVoted) {
@@ -246,7 +250,6 @@ function renderSeats() {
 function renderTable() {
   const voters = requiredVoters(state.participants);
   const voted = voters.filter((p) => p.hasVoted).length;
-  const isProductOwner = state.you.role === "product_owner";
 
   dom.tableActions.innerHTML = "";
   dom.results.hidden = true;
@@ -266,40 +269,13 @@ function renderTable() {
         dom.results.appendChild(consensus);
       }
     }
-    if (isProductOwner) {
-      dom.tableActions.appendChild(
-        makeButton("New round", "primary", async () => {
-          await api("/api/reset");
-        })
-      );
-      dom.tableActions.appendChild(restartButton());
-    }
     return;
   }
 
   dom.tableStatus.textContent =
-    state.participants.length <= 1
+    voters.length === 0
       ? "Waiting for teammates to join…"
       : `${voted} of ${voters.length} have voted`;
-
-  if (isProductOwner) {
-    dom.tableActions.appendChild(
-      makeButton("Reveal cards", "primary", () => {
-        const missing = voters.filter((p) => !p.hasVoted);
-        if (missing.length > 0) {
-          openConfirm(missing);
-        } else {
-          api("/api/reveal");
-        }
-      })
-    );
-    dom.tableActions.appendChild(
-      makeButton("Reset votes", "ghost", async () => {
-        await api("/api/reset");
-      })
-    );
-    dom.tableActions.appendChild(restartButton());
-  }
 }
 
 function restartButton() {
@@ -333,8 +309,18 @@ function makeButton(text, className, onClick) {
   return button;
 }
 
-function renderHand() {
+function renderHandArea() {
+  const isProductOwner = state.you.role === "product_owner";
   dom.hand.innerHTML = "";
+  dom.hand.classList.toggle("controls", isProductOwner);
+
+  if (isProductOwner) {
+    dom.handTitle.textContent = "Product Owner controls";
+    renderProductOwnerControls();
+    return;
+  }
+
+  dom.handTitle.textContent = "Your cards";
   state.deck.forEach((value) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -354,6 +340,40 @@ function renderHand() {
     });
     dom.hand.appendChild(button);
   });
+}
+
+function renderProductOwnerControls() {
+  const voters = requiredVoters(state.participants);
+
+  if (state.revealed) {
+    dom.hand.appendChild(
+      makeButton("New round", "primary", async () => {
+        await api("/api/reset");
+      })
+    );
+  } else {
+    const reveal = makeButton("Reveal cards", "primary", () => {
+      const missing = voters.filter((p) => !p.hasVoted);
+      if (missing.length > 0) {
+        openConfirm(missing);
+      } else {
+        api("/api/reveal");
+      }
+    });
+    reveal.disabled = voters.length === 0;
+    reveal.title = reveal.disabled
+      ? "Nobody is estimating yet"
+      : "Turn every card face up";
+    dom.hand.appendChild(reveal);
+
+    dom.hand.appendChild(
+      makeButton("Reset votes", "ghost", async () => {
+        await api("/api/reset");
+      })
+    );
+  }
+
+  dom.hand.appendChild(restartButton());
 }
 
 /* -------------------------------------------------------------- confirm */

@@ -121,6 +121,8 @@ class Room:
             user = self._users.get(token)
             if user is None:
                 return False
+            if user["role"] == "product_owner":
+                return False  # the Product Owner facilitates, they do not estimate
             if self._revealed:
                 return False
             if card is not None and card not in DECK:
