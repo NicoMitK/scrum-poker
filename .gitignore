@@ -1,0 +1,14 @@
+# Downloaded helper binaries (cloudflared.exe)
+tools/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS
+.idea/
+*.swp
+Thumbs.db
+.DS_Store

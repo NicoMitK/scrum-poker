@@ -1,0 +1,2 @@
+# Scrum Poker runs on the Python standard library only - no packages required.
+# This file exists so hosting providers (e.g. Render) recognise a Python project.

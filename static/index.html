@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scrum Poker</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- Join screen -->
+  <div id="join-screen" class="overlay">
+    <form id="join-form" class="panel">
+      <h1>🃏 Scrum Poker</h1>
+      <p class="subtitle">Pick your name and role to sit down at the table.</p>
+
+      <label for="join-name">Your name</label>
+      <input id="join-name" type="text" maxlength="24" placeholder="e.g. Max Mustermann" autocomplete="off" required />
+
+      <span class="label">Your role</span>
+      <div class="role-choice">
+        <button type="button" class="role-btn" data-role="product_owner">
+          <span class="role-icon">👑</span>
+          <span class="role-title">Product Owner</span>
+          <span class="role-desc">Can reveal the cards and start new rounds</span>
+        </button>
+        <button type="button" class="role-btn" data-role="technical_operations">
+          <span class="role-icon">🛠️</span>
+          <span class="role-title">Technical Operations</span>
+          <span class="role-desc">Estimates the stories</span>
+        </button>
+      </div>
+
+      <p id="join-error" class="error" hidden></p>
+      <button id="join-submit" class="primary" type="submit" disabled>Join the table</button>
+    </form>
+  </div>
+
+  <!-- Main app -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="brand">🃏 Scrum Poker</div>
+      <div class="topbar-right">
+        <span id="round-label" class="pill">Round 1</span>
+        <span id="me-label" class="pill"></span>
+        <span id="conn-label" class="pill conn">connecting…</span>
+        <button id="leave-btn" class="ghost" type="button">Leave</button>
+      </div>
+    </header>
+
+    <main class="stage">
+      <div class="seats seats-top" id="seats-top"></div>
+
+      <div class="table-row">
+        <div class="seats seats-side" id="seats-left"></div>
+
+        <div class="table">
+          <div class="table-inner">
+            <p id="table-status" class="table-status">Waiting for votes…</p>
+            <div id="table-actions" class="table-actions"></div>
+            <div id="results" class="results" hidden></div>
+          </div>
+        </div>
+
+        <div class="seats seats-side" id="seats-right"></div>
+      </div>
+
+      <div class="seats seats-bottom" id="seats-bottom"></div>
+    </main>
+
+    <footer class="hand-area">
+      <p class="hand-title">Your cards</p>
+      <div id="hand" class="hand"></div>
+    </footer>
+  </div>
+
+  <!-- Confirm modal -->
+  <div id="confirm-modal" class="overlay" hidden>
+    <div class="panel small">
+      <h2>Are you sure?</h2>
+      <p id="confirm-text">Not everyone has given their prediction yet.</p>
+      <div class="modal-actions">
+        <button id="confirm-cancel" class="ghost" type="button">Cancel</button>
+        <button id="confirm-ok" class="primary" type="button">Reveal anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
