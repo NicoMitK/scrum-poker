@@ -138,6 +138,30 @@ class ServerTests(unittest.TestCase):
         status, _ = self.post("/api/vote", {"card": "5"}, token="bogus")
         self.assertEqual(status, 401)
 
+    def test_restart_is_product_owner_only_and_empties_the_room(self):
+        po = self.join("PO", "product_owner")
+        dev = self.join("Dev", "technical_operations")
+
+        self.post("/api/reset", token=po)
+        self.assertEqual(self.get("/api/state", token=po)["round"], 2)
+
+        status, _ = self.post("/api/restart", token=dev)
+        self.assertEqual(status, 403)
+
+        status, _ = self.post("/api/restart", token=po)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.get("/api/state", token=po)["round"], 1)
+
+        # Everybody leaving must bring the room back to a clean round 1.
+        self.post("/api/reset", token=po)
+        self.post("/api/leave", token=po)
+        self.post("/api/leave", token=dev)
+
+        state = self.get("/api/state")
+        self.assertEqual(state["participants"], [])
+        self.assertEqual(state["round"], 1)
+        self.assertFalse(state["revealed"])
+
     def test_unknown_endpoint_returns_404(self):
         status, _ = self.post("/api/does-not-exist")
         self.assertEqual(status, 404)

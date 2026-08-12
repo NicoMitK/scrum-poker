@@ -172,6 +172,88 @@ class ResetTests(RoomTestCase):
         self.assertIsNone(state["stats"])
 
 
+class RestartTests(RoomTestCase):
+    def test_restart_goes_back_to_round_one(self):
+        self.room.reset(self.po)
+        self.room.reset(self.po)
+        self.assertEqual(self.room.snapshot()["round"], 3)
+
+        self.room.vote(self.dev_a, "8")
+        self.room.reveal(self.po)
+        self.assertTrue(self.room.restart(self.po))
+
+        state = self.room.snapshot()
+        self.assertEqual(state["round"], 1)
+        self.assertFalse(state["revealed"])
+        self.assertEqual(state["votedCount"], 0)
+
+    def test_only_product_owner_may_restart(self):
+        self.room.reset(self.po)
+        self.assertFalse(self.room.restart(self.dev_a))
+        self.assertEqual(self.room.snapshot()["round"], 2)
+
+    def test_restart_keeps_everybody_seated(self):
+        before = len(self.room.snapshot()["participants"])
+        self.room.restart(self.po)
+        self.assertEqual(len(self.room.snapshot()["participants"]), before)
+
+
+class EmptyRoomTests(RoomTestCase):
+    def _everybody_leaves(self):
+        for token in (self.po, self.dev_a, self.dev_b):
+            self.room.leave(token)
+
+    def test_last_person_leaving_resets_the_round(self):
+        self.room.reset(self.po)
+        self.room.vote(self.dev_a, "5")
+        self.room.reveal(self.po)
+
+        self._everybody_leaves()
+
+        state = self.room.snapshot()
+        self.assertEqual(state["participants"], [])
+        self.assertEqual(state["round"], 1)
+        self.assertFalse(state["revealed"])
+
+    def test_round_survives_while_somebody_is_still_there(self):
+        self.room.reset(self.po)
+        self.room.leave(self.dev_a)
+        self.room.leave(self.dev_b)
+
+        self.assertEqual(self.room.snapshot()["round"], 2)
+
+    def test_next_session_starts_at_round_one(self):
+        self.room.reset(self.po)
+        self._everybody_leaves()
+
+        newcomer = self.room.join("Max Mustermann", "product_owner")
+        state = self.room.personal_state(newcomer)
+
+        self.assertEqual(state["round"], 1)
+        self.assertFalse(state["revealed"])
+        self.assertIsNone(state["you"]["vote"])
+
+    def test_stale_users_being_reaped_also_resets(self):
+        self.room.reset(self.po)
+        self.room.reveal(self.po)
+        for token in (self.po, self.dev_a, self.dev_b):
+            self.room._users[token]["last_seen"] = 0
+
+        self.room.drop_stale_users()
+
+        state = self.room.snapshot()
+        self.assertEqual(state["participants"], [])
+        self.assertEqual(state["round"], 1)
+        self.assertFalse(state["revealed"])
+
+    def test_product_owner_removing_the_last_others_keeps_their_round(self):
+        self.room.reset(self.po)
+        self.room.remove_participant(self.po, self.room.personal_state(self.dev_a)["you"]["id"])
+        self.room.remove_participant(self.po, self.room.personal_state(self.dev_b)["you"]["id"])
+
+        self.assertEqual(self.room.snapshot()["round"], 2)
+
+
 class PersonalStateTests(RoomTestCase):
     def test_you_see_your_own_vote_before_reveal(self):
         self.room.vote(self.dev_a, "5")

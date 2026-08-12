@@ -26,6 +26,16 @@ body {
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   display: flex;
   flex-direction: column;
+  /* it is a card game, not a document: no text cursor, no accidental selecting */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: auto;
 }
 
 button { font-family: inherit; cursor: pointer; }
@@ -300,7 +310,7 @@ input[type="text"]:focus { border-color: var(--accent); }
 }
 
 .hand-title {
-  margin: 0 0 10px;
+  margin: 0 0 4px;
   text-align: center;
   font-size: 12px;
   text-transform: uppercase;
@@ -310,9 +320,13 @@ input[type="text"]:focus { border-color: var(--accent); }
 
 .hand {
   display: flex;
-  gap: 10px;
+  column-gap: 10px;
+  /* rows need the same headroom as the title, so a lifted card stays clear */
+  row-gap: 18px;
   justify-content: center;
   flex-wrap: wrap;
+  /* headroom so a lifted/selected card cannot cover the title */
+  padding-top: 18px;
 }
 
 .card {
@@ -324,6 +338,7 @@ input[type="text"]:focus { border-color: var(--accent); }
   color: var(--card-text);
   font-size: 20px;
   font-weight: 800;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;

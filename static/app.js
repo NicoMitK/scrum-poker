@@ -272,6 +272,7 @@ function renderTable() {
           await api("/api/reset");
         })
       );
+      dom.tableActions.appendChild(restartButton());
     }
     return;
   }
@@ -297,7 +298,17 @@ function renderTable() {
         await api("/api/reset");
       })
     );
+    dom.tableActions.appendChild(restartButton());
   }
+}
+
+function restartButton() {
+  return makeButton("Restart voting", "ghost", () => {
+    askConfirm(
+      "This clears every card and starts again at round 1 for everybody. Restart the voting?",
+      () => api("/api/restart")
+    );
+  });
 }
 
 function addResult(label, value) {
@@ -350,11 +361,18 @@ let confirmHandler = null;
 
 function openConfirm(missing) {
   const names = missing.map((p) => p.name).join(", ");
-  dom.confirmText.textContent = `Not everyone has given their prediction yet. Still missing: ${names}. Reveal the cards anyway?`;
+  askConfirm(
+    `Not everyone has given their prediction yet. Still missing: ${names}. Reveal the cards anyway?`,
+    () => api("/api/reveal")
+  );
+}
+
+function askConfirm(text, onConfirm) {
+  dom.confirmText.textContent = text;
   dom.confirmModal.hidden = false;
   confirmHandler = async () => {
     dom.confirmModal.hidden = true;
-    await api("/api/reveal");
+    await onConfirm();
   };
 }
 

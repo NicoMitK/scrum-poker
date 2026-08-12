@@ -74,6 +74,8 @@ class Room:
     def leave(self, token: str) -> None:
         with self._lock:
             existed = self._users.pop(token, None) is not None
+            if existed:
+                self._reset_if_empty()
         if existed:
             self.broadcast()
 
@@ -89,6 +91,7 @@ class Room:
             if target is None or target == token:
                 return False
             del self._users[target]
+            self._reset_if_empty()
         self.broadcast()
         return True
 
@@ -150,6 +153,27 @@ class Room:
                 user["vote"] = None
         self.broadcast()
         return True
+
+    def restart(self, token: str) -> bool:
+        """Product Owner starts the whole session over: back to round 1."""
+        if not self.is_product_owner(token):
+            return False
+        with self._lock:
+            self._revealed = False
+            self._round = 1
+            for user in self._users.values():
+                user["vote"] = None
+        self.broadcast()
+        return True
+
+    def _reset_if_empty(self) -> None:
+        """Nobody left at the table -> the next arrival starts at round 1.
+
+        Must be called while holding the lock.
+        """
+        if not self._users:
+            self._revealed = False
+            self._round = 1
 
     # ---------------------------------------------------------------- state
     def snapshot(self) -> dict:
@@ -235,6 +259,8 @@ class Room:
                 if now - user["last_seen"] > STALE_USER_SECONDS:
                     del self._users[token]
                     removed = True
+            if removed:
+                self._reset_if_empty()
         if removed:
             self.broadcast()
 
@@ -371,6 +397,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": ok, "state": ROOM.personal_state(token)}, 200 if ok else 403)
         elif path == "/api/reset":
             ok = ROOM.reset(token)
+            self._send_json({"ok": ok, "state": ROOM.personal_state(token)}, 200 if ok else 403)
+        elif path == "/api/restart":
+            ok = ROOM.restart(token)
             self._send_json({"ok": ok, "state": ROOM.personal_state(token)}, 200 if ok else 403)
         elif path == "/api/leave":
             ROOM.leave(token)
