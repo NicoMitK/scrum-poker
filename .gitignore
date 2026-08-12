@@ -1,11 +1,17 @@
 # Downloaded helper binaries (cloudflared.exe)
 tools/
 
+# Secrets - never commit these
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+.ruff_cache/
 
 # Editors / OS
 .idea/
