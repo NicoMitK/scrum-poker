@@ -1,0 +1,10 @@
+# Linter configuration - keeps CI deterministic across ruff versions.
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[lint.per-file-ignores]
+# Tests add the project root to sys.path before importing the server module.
+"tests/*" = ["E402"]

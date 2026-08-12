@@ -1,5 +1,7 @@
 # 🃏 Scrum Poker
 
+[![CI](https://github.com/NicoMitK/scrum-poker/actions/workflows/ci.yml/badge.svg)](https://github.com/NicoMitK/scrum-poker/actions/workflows/ci.yml)
+
 A tiny real-time planning-poker web app for the team. **No dependencies** — plain Python 3
 standard library on the server, vanilla HTML/CSS/JS in the browser.
 
@@ -125,6 +127,42 @@ New-NetFirewallRule -DisplayName "Scrum Poker 8000" -Direction Inbound -Protocol
 - **Any host with Python 3.9+**: copy the folder, run `python server.py --port 80`.
   There is nothing else to install.
 
+## CI/CD
+
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push to `main`, on every
+pull request and on demand (**Actions → CI → Run workflow**).
+
+| Job | What it does |
+| --- | --- |
+| `test` | Runs the 37 unit + API tests on Python 3.11, 3.12 and 3.13 |
+| `lint` | `ruff check .` using the rules in [ruff.toml](ruff.toml) |
+| `smoke` | Really starts `server.py`, loads the page, checks the deck and that a non-PO gets `403` on reveal |
+| `deploy` | Only on `main`: triggers the Render deploy hook (skips itself if no secret is set) |
+
+### Run the same checks locally before pushing
+
+```powershell
+python -m unittest discover -s tests -v   # tests
+pip install ruff; ruff check .            # linter
+```
+
+### Deployment
+
+Render **already redeploys automatically** on every push to `main` once the repo is connected,
+so the `deploy` job is optional — without a secret it just prints a note and succeeds.
+
+Wire it up only if you want the deploy to wait for green tests:
+
+1. Render dashboard → your service → **Settings → Deploy Hook** → copy the URL.
+2. Turn **Auto-Deploy** *off* there (otherwise Render deploys before CI has finished).
+3. GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**
+   → name `RENDER_DEPLOY_HOOK_URL`, value = the copied URL.
+
+### Protecting `main` (optional)
+
+**Settings → Branches → Add rule** for `main`, tick *Require status checks to pass before
+merging* and select the `Tests` and `Lint` checks. Broken code can then no longer reach `main`.
+
 ## How it works
 
 | File | Purpose |
@@ -132,6 +170,10 @@ New-NetFirewallRule -DisplayName "Scrum Poker 8000" -Direction Inbound -Protocol
 | [server.py](server.py) | HTTP server, in-memory room state, REST endpoints + SSE stream |
 | [share.ps1](share.ps1) | Starts the server, optionally with a public Cloudflare tunnel |
 | [render.yaml](render.yaml) | Free deployment to Render |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | CI/CD pipeline: tests, lint, smoke test, deploy |
+| [ruff.toml](ruff.toml) | Linter rules |
+| [tests/test_server.py](tests/test_server.py) | Unit tests for the room logic and the card values |
+| [tests/test_api.py](tests/test_api.py) | End-to-end tests against a real running server |
 | [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) | GitHub Codespaces setup |
 | [static/index.html](static/index.html) | Markup for join screen, table and modal |
 | [static/style.css](static/style.css) | Poker-table styling |

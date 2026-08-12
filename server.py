@@ -345,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _write_event(self, state: dict) -> None:
         payload = json.dumps(state)
-        self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
+        self.wfile.write(f"data: {payload}\n\n".encode())
         self.wfile.flush()
 
     # ---------------------------------------------------------------- POST
@@ -391,7 +391,7 @@ def _reaper_loop() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Scrum Poker server")
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT") or 8000))
     args = parser.parse_args()
 
     threading.Thread(target=_reaper_loop, daemon=True).start()
