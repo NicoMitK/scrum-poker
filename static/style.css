@@ -74,6 +74,9 @@ button { font-family: inherit; cursor: pointer; }
 .panel h1 { margin: 0; font-size: 28px; }
 .panel h2 { margin: 0 0 4px; font-size: 22px; }
 .subtitle { margin: 0 0 8px; color: var(--muted); }
+.hint { margin: -6px 0 4px; font-size: 12px; color: var(--muted); opacity: 0.8; }
+
+#join-room { text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700; }
 
 label, .label {
   font-size: 13px;
@@ -178,6 +181,16 @@ input[type="text"]:focus { border-color: var(--accent); }
 
 .pill.conn.online { color: #7ee2a8; }
 .pill.conn.offline { color: var(--danger); }
+
+.pill.share {
+  border: 1px solid rgba(245, 182, 66, 0.35);
+  color: var(--accent);
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.04em;
+}
+
+.pill.share:hover { background: rgba(245, 182, 66, 0.15); border-color: var(--accent); }
 
 /* --------------------------------------------------------------- stage */
 .stage {

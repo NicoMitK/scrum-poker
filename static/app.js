@@ -1,6 +1,7 @@
 "use strict";
 
-const STORAGE_KEY = "scrum-poker-session";
+const STORAGE_PREFIX = "scrum-poker-session:";
+const MAX_ROOM_CODE_LENGTH = 16;
 
 const CARD_LABELS = {
   "coffee": "\u2615",
@@ -21,10 +22,13 @@ const el = (id) => document.getElementById(id);
 const dom = {
   joinScreen: el("join-screen"),
   joinForm: el("join-form"),
+  joinRoom: el("join-room"),
   joinName: el("join-name"),
   joinSubmit: el("join-submit"),
   joinError: el("join-error"),
   app: el("app"),
+  roomLabel: el("room-label"),
+  shareBtn: el("share-btn"),
   roundLabel: el("round-label"),
   meLabel: el("me-label"),
   connLabel: el("conn-label"),
@@ -46,10 +50,32 @@ const dom = {
   confirmCancel: el("confirm-cancel"),
 };
 
-let token = localStorage.getItem(STORAGE_KEY) || "";
+let token = "";
+let roomCode = "";
 let selectedRole = "";
 let state = null;
 let eventSource = null;
+
+/* ----------------------------------------------------------------- room */
+function normalizeRoomCode(raw) {
+  return (raw || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9\-_]/g, "")
+    .slice(0, MAX_ROOM_CODE_LENGTH);
+}
+
+function roomFromUrl() {
+  const match = window.location.pathname.match(/^\/table\/([^/]*)/);
+  return match ? normalizeRoomCode(decodeURIComponent(match[1])) : "";
+}
+
+function tableUrl(code) {
+  return `${window.location.origin}/table/${code}`;
+}
+
+function storageKey(code) {
+  return STORAGE_PREFIX + code;
+}
 
 /* ------------------------------------------------------------------ api */
 async function api(path, body) {
@@ -76,25 +102,36 @@ document.querySelectorAll(".role-btn").forEach((button) => {
 });
 
 dom.joinName.addEventListener("input", updateJoinButton);
+dom.joinRoom.addEventListener("input", () => {
+  const caretAtEnd = dom.joinRoom.selectionStart === dom.joinRoom.value.length;
+  dom.joinRoom.value = normalizeRoomCode(dom.joinRoom.value);
+  if (caretAtEnd) dom.joinRoom.setSelectionRange(dom.joinRoom.value.length, dom.joinRoom.value.length);
+  updateJoinButton();
+});
 
 function updateJoinButton() {
-  dom.joinSubmit.disabled = !(selectedRole && dom.joinName.value.trim());
+  dom.joinSubmit.disabled = !(selectedRole && dom.joinName.value.trim() && dom.joinRoom.value.trim());
 }
 
 dom.joinForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   dom.joinSubmit.disabled = true;
   dom.joinError.hidden = true;
+  const code = normalizeRoomCode(dom.joinRoom.value);
   try {
+    if (!code) throw new Error("Please enter a team ID.");
     const { ok, data } = await api("/api/join", {
+      room: code,
       name: dom.joinName.value.trim(),
       role: selectedRole,
     });
     if (!ok || !data.token) {
-      throw new Error("Could not join the table.");
+      throw new Error(data.error || "Could not join the table.");
     }
     token = data.token;
-    localStorage.setItem(STORAGE_KEY, token);
+    roomCode = data.state.room;
+    localStorage.setItem(storageKey(roomCode), token);
+    history.replaceState(null, "", tableUrl(roomCode));
     render(data.state);
     showApp();
     connect();
@@ -115,12 +152,13 @@ function showJoin() {
     eventSource.close();
     eventSource = null;
   }
+  if (roomCode) localStorage.removeItem(storageKey(roomCode));
   token = "";
   state = null;
-  localStorage.removeItem(STORAGE_KEY);
   dom.app.hidden = true;
   dom.joinScreen.hidden = false;
   dom.joinSubmit.disabled = false;
+  if (roomCode) dom.joinRoom.value = roomCode;
   updateJoinButton();
 }
 
@@ -128,6 +166,44 @@ dom.leaveBtn.addEventListener("click", async () => {
   await api("/api/leave");
   showJoin();
 });
+
+dom.shareBtn.addEventListener("click", async () => {
+  const link = tableUrl(roomCode);
+  const copied = await copyToClipboard(link);
+  const original = roomCode;
+  dom.roomLabel.textContent = copied ? "Link copied!" : link;
+  dom.shareBtn.title = link;
+  window.setTimeout(() => {
+    dom.roomLabel.textContent = original;
+  }, copied ? 1500 : 6000);
+});
+
+async function copyToClipboard(text) {
+  // navigator.clipboard only exists in a secure context (https or localhost),
+  // so keep the old execCommand trick as a fallback for plain-http hosting.
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (error) {
+    // fall through
+  }
+  try {
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.setAttribute("readonly", "");
+    helper.style.position = "fixed";
+    helper.style.opacity = "0";
+    document.body.appendChild(helper);
+    helper.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(helper);
+    return ok;
+  } catch (error) {
+    return false;
+  }
+}
 
 // No "leave" on unload on purpose: a page refresh must not kick you off the
 // table. The server removes participants whose event stream stopped (~40s).
@@ -138,7 +214,12 @@ function connect() {
   eventSource = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
 
   eventSource.onopen = () => setConnection(true);
-  eventSource.onerror = () => setConnection(false);
+  eventSource.onerror = () => {
+    setConnection(false);
+    // The table may be gone (server restart, or everybody left and it was
+    // cleaned up). Check once instead of reconnecting forever.
+    window.setTimeout(checkSessionStillValid, 2000);
+  };
   eventSource.onmessage = (event) => {
     setConnection(true);
     let payload;
@@ -162,6 +243,17 @@ function setConnection(online) {
   dom.connLabel.classList.toggle("offline", !online);
 }
 
+async function checkSessionStillValid() {
+  if (!token || !eventSource) return;
+  try {
+    const response = await fetch("/api/state", { headers: { "X-Poker-Token": token } });
+    const data = await response.json();
+    if (!data.you) showJoin();
+  } catch (error) {
+    // Server unreachable - keep the EventSource retrying.
+  }
+}
+
 /* --------------------------------------------------------------- render */
 function cardLabel(value) {
   return CARD_LABELS[value] || value;
@@ -179,6 +271,9 @@ function render(next) {
   }
   showApp();
 
+  roomCode = state.room || roomCode;
+  dom.roomLabel.textContent = roomCode;
+  dom.shareBtn.title = `Copy the link to table ${roomCode}`;
   dom.roundLabel.textContent = `Round ${state.round}`;
   dom.meLabel.textContent = `${ROLE_ICONS[state.you.role]} ${state.you.name}`;
 
@@ -415,10 +510,19 @@ document.addEventListener("keydown", (event) => {
 
 /* --------------------------------------------------------------- start */
 async function boot() {
+  roomCode = roomFromUrl();
+  if (roomCode) {
+    dom.joinRoom.value = roomCode;
+    document.title = `Scrum Poker — ${roomCode}`;
+  }
+  updateJoinButton();
+
+  token = roomCode ? localStorage.getItem(storageKey(roomCode)) || "" : "";
   if (!token) {
-    dom.joinName.focus();
+    (roomCode ? dom.joinName : dom.joinRoom).focus();
     return;
   }
+
   const response = await fetch("/api/state", { headers: { "X-Poker-Token": token } });
   const data = await response.json().catch(() => null);
   if (!data || !data.you) {

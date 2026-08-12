@@ -6,7 +6,11 @@ Real-time planning poker for the team. Pure Python standard library, no dependen
 
 ## What it does
 
-- Pick a name and a role: **Product Owner** 👑 or **Technical Operations** 🛠️
+- Enter a **team ID** (e.g. `TEAM42`) and your name, then pick a role:
+  **Product Owner** 👑 or **Technical Operations** 🛠️
+- Everybody with the same team ID shares one table; different IDs never see each other
+- Share the table with the 🔗 button in the top bar — it copies a link like
+  `https://your-app.onrender.com/table/TEAM42`. Opening it pre-fills the team ID.
 - Technical Operations estimate with a hand of cards:
   `0.25 · 0.5 · 1 · 2 · 3 · 5 · 8 · 13 · 21+ · ☕`
 - The Product Owner does not estimate. Where the others have their cards, they get the
@@ -15,10 +19,11 @@ Real-time planning poker for the team. Pure Python standard library, no dependen
 - Cards stay face down until the Product Owner reveals them
 - Revealing before everybody voted asks for confirmation and names who is missing
 - After reveal: average, lowest, highest, 🎉 on consensus
-- The table resets itself to round 1 as soon as the last person leaves
+- A table resets to round 1 as soon as the last person leaves, and is forgotten entirely
 - Everything updates live for everybody — no refresh
 
 `21+` counts as 21 in the average, ☕ means "skip" and is left out of the statistics.
+Team IDs are case-insensitive (`team42` = `TEAM42`), max 16 characters, `A-Z 0-9 - _`.
 
 ## Run it
 
@@ -44,7 +49,7 @@ Visitors never need a login — only the port/tunnel has to be **Public**.
 ## Development
 
 ```powershell
-python -m unittest discover -s tests -v   # 51 tests
+python -m unittest discover -s tests -v   # 70 tests
 ruff check .                              # linter
 ```
 
@@ -65,9 +70,10 @@ secret (otherwise Render just auto-deploys on push).
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/state` | Current state for the caller (`X-Poker-Token` header) |
+| `GET` | `/table/<TEAMID>` | Shareable link — serves the app with the team ID pre-filled |
+| `GET` | `/api/state` | State for the caller (`X-Poker-Token`), or `?room=<TEAMID>` |
 | `GET` | `/api/events?token=…` | Server-Sent Events stream |
-| `POST` | `/api/join` | `{name, role}` → `{token, state}` |
+| `POST` | `/api/join` | `{room, name, role}` → `{token, state}` |
 | `POST` | `/api/vote` | `{card}` — the same card again takes it back (Technical Operations only) |
 | `POST` | `/api/reveal` | Product Owner only |
 | `POST` | `/api/reset` | Product Owner only — next round |
@@ -75,6 +81,10 @@ secret (otherwise Render just auto-deploys on push).
 | `POST` | `/api/remove` | `{id}` — Product Owner removes a participant |
 | `POST` | `/api/leave` | Leaves the table |
 
-State lives in memory, so a restart clears the table. A seat survives a page refresh; a closed
-tab disappears after ~40 seconds. One seat per browser profile — use a private window to test
-a second participant. To change the deck edit `DECK` and `CARD_VALUES` in [server.py](server.py).
+The token returned by `/api/join` starts with the team ID, so every later request knows which
+table it belongs to — a token from one table cannot touch another.
+
+State lives in memory, so a restart clears every table. A seat survives a page refresh; a
+closed tab disappears after ~40 seconds, and a table with nobody left is dropped. One seat per
+browser profile per table — use a private window to test a second participant. To change the
+deck edit `DECK` and `CARD_VALUES` in [server.py](server.py).

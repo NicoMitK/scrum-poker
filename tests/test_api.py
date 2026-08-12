@@ -82,10 +82,17 @@ class ServerTests(unittest.TestCase):
         except urllib.error.HTTPError as error:
             return error.code, json.loads(error.read().decode("utf-8") or "{}")
 
-    def join(self, name, role):
-        status, data = self.post("/api/join", {"name": name, "role": role})
+    def join(self, name, role, room=None):
+        status, data = self.post(
+            "/api/join", {"room": room or self.room(), "name": name, "role": role}
+        )
         self.assertEqual(status, 200)
         return data["token"]
+
+    def room(self):
+        """A table code of its own per test, so the tests cannot disturb each other."""
+        name = self.id().rsplit(".", 1)[-1].replace("_", "").upper()
+        return name[:16]
 
     # --------------------------------------------------------------- tests
     def test_index_page_is_served(self):
@@ -94,8 +101,14 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.status, 200)
         self.assertIn("Scrum Poker", body)
 
+    def test_table_links_serve_the_app(self):
+        with urllib.request.urlopen(self.base + "/table/TEAM42", timeout=10) as response:
+            body = response.read().decode("utf-8")
+        self.assertEqual(response.status, 200)
+        self.assertIn("Scrum Poker", body)
+
     def test_static_assets_are_served(self):
-        for path, needle in (("/app.js", "STORAGE_KEY"), ("/style.css", ".seat")):
+        for path, needle in (("/app.js", "STORAGE_PREFIX"), ("/style.css", ".seat")):
             with urllib.request.urlopen(self.base + path, timeout=10) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn(needle, response.read().decode("utf-8"))
@@ -171,10 +184,73 @@ class ServerTests(unittest.TestCase):
         self.post("/api/leave", token=po)
         self.post("/api/leave", token=dev)
 
-        state = self.get("/api/state")
+        state = self.get("/api/state?room=" + self.room())
         self.assertEqual(state["participants"], [])
         self.assertEqual(state["round"], 1)
         self.assertFalse(state["revealed"])
+
+    def test_separate_team_ids_are_separate_tables(self):
+        alice = self.join("Alice", "technical_operations", room="TEAMONE")
+        bob = self.join("Bob", "technical_operations", room="TEAMTWO")
+
+        self.post("/api/vote", {"card": "5"}, token=alice)
+
+        one = self.get("/api/state", token=alice)
+        two = self.get("/api/state", token=bob)
+
+        self.assertEqual(one["room"], "TEAMONE")
+        self.assertEqual(two["room"], "TEAMTWO")
+        self.assertEqual([p["name"] for p in one["participants"]], ["Alice"])
+        self.assertEqual([p["name"] for p in two["participants"]], ["Bob"])
+        self.assertEqual(one["votedCount"], 1)
+        self.assertEqual(two["votedCount"], 0)
+
+        self.post("/api/leave", token=alice)
+        self.post("/api/leave", token=bob)
+
+    def test_team_id_is_case_insensitive(self):
+        upper = self.join("Upper", "technical_operations", room="TEAM42")
+        lower = self.join("Lower", "technical_operations", room="team42")
+
+        state = self.get("/api/state", token=upper)
+        self.assertEqual(state["room"], "TEAM42")
+        self.assertEqual(
+            sorted(p["name"] for p in state["participants"]), ["Lower", "Upper"]
+        )
+
+        self.post("/api/leave", token=upper)
+        self.post("/api/leave", token=lower)
+
+    def test_join_without_a_team_id_is_rejected(self):
+        status, data = self.post("/api/join", {"name": "Nobody", "role": "technical_operations"})
+        self.assertEqual(status, 400)
+        self.assertIn("team ID", data["error"])
+
+        status, _ = self.post(
+            "/api/join", {"room": "!!!", "name": "Nobody", "role": "technical_operations"}
+        )
+        self.assertEqual(status, 400)
+
+    def test_state_of_an_unknown_table_is_empty(self):
+        state = self.get("/api/state?room=NOSUCHTABLE")
+        self.assertEqual(state["room"], "NOSUCHTABLE")
+        self.assertFalse(state["exists"])
+        self.assertEqual(state["participants"], [])
+        self.assertIsNone(state["you"])
+
+    def test_a_token_only_works_on_its_own_table(self):
+        outsider = self.join("Outsider", "product_owner", room="OTHERTABLE")
+        insider = self.join("Insider", "technical_operations", room="MYTABLE")
+
+        self.post("/api/vote", {"card": "3"}, token=insider)
+        # The outsider is a Product Owner, but of a different table.
+        self.post("/api/reveal", token=outsider)
+
+        state = self.get("/api/state", token=insider)
+        self.assertFalse(state["revealed"])
+
+        self.post("/api/leave", token=outsider)
+        self.post("/api/leave", token=insider)
 
     def test_unknown_endpoint_returns_404(self):
         status, _ = self.post("/api/does-not-exist")

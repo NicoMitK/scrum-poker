@@ -27,8 +27,19 @@ CARD_VALUES = {"21+": 21.0, "coffee": None}
 ROLES = ("product_owner", "technical_operations")
 
 MAX_NAME_LENGTH = 24
+MAX_ROOM_CODE_LENGTH = 16
 HEARTBEAT_SECONDS = 15
 STALE_USER_SECONDS = 40
+
+# The room code travels in the URL, so keep it to characters that survive that.
+ROOM_CODE_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+TOKEN_SEPARATOR = "~"
+
+
+def normalize_room_code(raw: str | None) -> str:
+    """Room codes are case-insensitive: 'team42' and 'TEAM42' are one table."""
+    cleaned = "".join(c for c in (raw or "").strip().upper() if c in ROOM_CODE_CHARS)
+    return cleaned[:MAX_ROOM_CODE_LENGTH]
 
 
 def card_value(card: str | None) -> float | None:
@@ -44,24 +55,31 @@ def card_value(card: str | None) -> float | None:
 
 
 class Room:
-    """In-memory state of the single poker room."""
+    """In-memory state of one poker table."""
 
-    def __init__(self) -> None:
+    def __init__(self, code: str = "TABLE") -> None:
+        self.code = code
         self._lock = threading.RLock()
         self._users: dict[str, dict] = {}
         self._subscribers: dict[str, queue.Queue] = {}
         self._revealed = False
         self._round = 1
 
+    @property
+    def empty(self) -> bool:
+        with self._lock:
+            return not self._users
+
     # ---------------------------------------------------------------- users
     def join(self, name: str, role: str) -> str:
         name = (name or "").strip()[:MAX_NAME_LENGTH] or "Anonymous"
         if role not in ROLES:
             role = "technical_operations"
-        token = secrets.token_urlsafe(16)
+        # The room code is part of the token, so any request identifies its table.
+        token = f"{self.code}{TOKEN_SEPARATOR}{secrets.token_urlsafe(16)}"
         with self._lock:
             self._users[token] = {
-                "id": token[:8],
+                "id": secrets.token_hex(4),
                 "name": name,
                 "role": role,
                 "vote": None,
@@ -205,6 +223,7 @@ class Room:
                     "consensus": len({card for _, card in counted}) == 1,
                 }
             return {
+                "room": self.code,
                 "deck": DECK,
                 "revealed": self._revealed,
                 "round": self._round,
@@ -267,7 +286,72 @@ class Room:
             self.broadcast()
 
 
-ROOM = Room()
+class Rooms:
+    """Every team gets its own table, addressed by a short code like TEAM42."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._rooms: dict[str, Room] = {}
+
+    def join(self, code: str, name: str, role: str) -> str | None:
+        """Create the table if needed and seat somebody, in one atomic step.
+
+        Doing both under the lock keeps the reaper from deleting a brand new
+        table before its first participant has arrived.
+        """
+        code = normalize_room_code(code)
+        if not code:
+            return None
+        with self._lock:
+            room = self._rooms.get(code)
+            if room is None:
+                room = Room(code)
+                self._rooms[code] = room
+            return room.join(name, role)
+
+    def get(self, code: str) -> Room | None:
+        code = normalize_room_code(code)
+        with self._lock:
+            return self._rooms.get(code) if code else None
+
+    def for_token(self, token: str) -> Room | None:
+        if not token or TOKEN_SEPARATOR not in token:
+            return None
+        return self.get(token.split(TOKEN_SEPARATOR, 1)[0])
+
+    def codes(self) -> list[str]:
+        with self._lock:
+            return sorted(self._rooms)
+
+    def drop_stale_users(self) -> None:
+        with self._lock:
+            rooms = list(self._rooms.items())
+        for _, room in rooms:
+            room.drop_stale_users()
+        with self._lock:
+            for code, room in rooms:
+                if room.empty and self._rooms.get(code) is room:
+                    del self._rooms[code]
+
+
+ROOMS = Rooms()
+
+# Everything below needs a seat at a table (the token says which one).
+TABLE_ENDPOINTS = frozenset(
+    {"/api/rename", "/api/vote", "/api/reveal", "/api/reset", "/api/restart", "/api/remove"}
+)
+
+
+def empty_state(code: str) -> dict:
+    """State for somebody who is not seated yet - the deck, and nothing else."""
+    room = ROOMS.get(code)
+    if room is not None:
+        state = room.personal_state("")
+        state["exists"] = True
+        return state
+    state = Room(normalize_room_code(code)).personal_state("")
+    state["exists"] = False
+    return state
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -319,7 +403,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/state":
-            self._send_json(ROOM.personal_state(self._token()))
+            token = self._token()
+            room = ROOMS.for_token(token)
+            if room is None:
+                self._send_json(empty_state(self._query().get("room", "")))
+            else:
+                self._send_json(room.personal_state(token))
         elif path == "/api/events":
             self._serve_events()
         else:
@@ -327,6 +416,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_static(self, path: str) -> None:
         if path in ("/", ""):
+            path = "/index.html"
+        # /table/TEAM42 is a shareable link, not a file - the app reads the code
+        # from the URL and joins that table.
+        if path == "/table" or path.startswith("/table/"):
             path = "/index.html"
         relative = os.path.normpath(path.lstrip("/")).replace("\\", "/")
         if relative.startswith("..") or os.path.isabs(relative):
@@ -348,7 +441,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_events(self) -> None:
         token = self._query().get("token", "")
-        channel = ROOM.subscribe(token)
+        room = ROOMS.for_token(token)
+        if room is None:
+            self._send_json({"error": "unknown table"}, 404)
+            return
+        channel = room.subscribe(token)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache, no-transform")
@@ -357,7 +454,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = True
         try:
-            self._write_event(ROOM.personal_state(token))
+            self._write_event(room.personal_state(token))
             while True:
                 try:
                     state = channel.get(timeout=HEARTBEAT_SECONDS)
@@ -365,11 +462,11 @@ class Handler(BaseHTTPRequestHandler):
                 except queue.Empty:
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
-                ROOM.touch(token)
+                room.touch(token)
         except (BrokenPipeError, ConnectionResetError, OSError, ValueError):
             pass
         finally:
-            ROOM.unsubscribe(channel)
+            room.unsubscribe(channel)
 
     def _write_event(self, state: dict) -> None:
         payload = json.dumps(state)
@@ -383,31 +480,53 @@ class Handler(BaseHTTPRequestHandler):
         token = self._token()
 
         if path == "/api/join":
-            new_token = ROOM.join(data.get("name", ""), data.get("role", ""))
-            self._send_json({"token": new_token, "state": ROOM.personal_state(new_token)})
-        elif path == "/api/rename":
-            ok = ROOM.rename(token, data.get("name", ""))
-            self._send_json({"ok": ok, "state": ROOM.personal_state(token)}, 200 if ok else 400)
+            code = normalize_room_code(data.get("room", ""))
+            if not code:
+                self._send_json({"error": "a team ID is required"}, 400)
+                return
+            new_token = ROOMS.join(code, data.get("name", ""), data.get("role", ""))
+            room = ROOMS.for_token(new_token)
+            if room is None:
+                self._send_json({"error": "could not open the table"}, 500)
+                return
+            self._send_json({"token": new_token, "state": room.personal_state(new_token)})
+            return
+
+        if path == "/api/leave":
+            room = ROOMS.for_token(token)
+            if room is not None:
+                room.leave(token)
+            self._send_json({"ok": True})
+            return
+
+        room = ROOMS.for_token(token)
+        if path not in TABLE_ENDPOINTS:
+            self._send_json({"error": "not found"}, 404)
+            return
+        if room is None:
+            self._send_json({"error": "unknown session"}, 401)
+            return
+
+        if path == "/api/rename":
+            ok = room.rename(token, data.get("name", ""))
+            self._send_json({"ok": ok, "state": room.personal_state(token)}, 200 if ok else 400)
         elif path == "/api/vote":
-            if not ROOM.touch(token):
+            if not room.touch(token):
                 self._send_json({"error": "unknown session"}, 401)
                 return
-            ok = ROOM.vote(token, data.get("card"))
-            self._send_json({"ok": ok, "state": ROOM.personal_state(token)})
+            ok = room.vote(token, data.get("card"))
+            self._send_json({"ok": ok, "state": room.personal_state(token)})
         elif path == "/api/reveal":
-            ok = ROOM.reveal(token)
-            self._send_json({"ok": ok, "state": ROOM.personal_state(token)}, 200 if ok else 403)
+            ok = room.reveal(token)
+            self._send_json({"ok": ok, "state": room.personal_state(token)}, 200 if ok else 403)
         elif path == "/api/reset":
-            ok = ROOM.reset(token)
-            self._send_json({"ok": ok, "state": ROOM.personal_state(token)}, 200 if ok else 403)
+            ok = room.reset(token)
+            self._send_json({"ok": ok, "state": room.personal_state(token)}, 200 if ok else 403)
         elif path == "/api/restart":
-            ok = ROOM.restart(token)
-            self._send_json({"ok": ok, "state": ROOM.personal_state(token)}, 200 if ok else 403)
-        elif path == "/api/leave":
-            ROOM.leave(token)
-            self._send_json({"ok": True})
+            ok = room.restart(token)
+            self._send_json({"ok": ok, "state": room.personal_state(token)}, 200 if ok else 403)
         elif path == "/api/remove":
-            ok = ROOM.remove_participant(token, str(data.get("id", "")))
+            ok = room.remove_participant(token, str(data.get("id", "")))
             self._send_json({"ok": ok}, 200 if ok else 403)
         else:
             self._send_json({"error": "not found"}, 404)
@@ -416,7 +535,7 @@ class Handler(BaseHTTPRequestHandler):
 def _reaper_loop() -> None:
     while True:
         time.sleep(10)
-        ROOM.drop_stale_users()
+        ROOMS.drop_stale_users()
 
 
 def main() -> None:

@@ -9,7 +9,90 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from server import DECK, Room, card_value
+from server import DECK, Room, Rooms, card_value, normalize_room_code
+
+
+class RoomCodeTests(unittest.TestCase):
+    def test_codes_are_upper_case(self):
+        self.assertEqual(normalize_room_code("team42"), "TEAM42")
+
+    def test_spaces_and_punctuation_are_dropped(self):
+        self.assertEqual(normalize_room_code("  team 42!  "), "TEAM42")
+
+    def test_dashes_and_underscores_survive(self):
+        self.assertEqual(normalize_room_code("team-42_1"), "TEAM-42_1")
+
+    def test_codes_are_capped(self):
+        self.assertEqual(len(normalize_room_code("A" * 50)), 16)
+
+    def test_nothing_usable_gives_an_empty_code(self):
+        self.assertEqual(normalize_room_code("!!!"), "")
+        self.assertEqual(normalize_room_code(None), "")
+
+
+class RoomsTests(unittest.TestCase):
+    def setUp(self):
+        self.rooms = Rooms()
+
+    def test_the_same_code_is_the_same_table(self):
+        a = self.rooms.join("TEAM42", "Alice", "technical_operations")
+        b = self.rooms.join("team42", "Bob", "technical_operations")
+
+        room = self.rooms.for_token(a)
+        self.assertIs(room, self.rooms.for_token(b))
+        self.assertEqual(
+            sorted(p["name"] for p in room.snapshot()["participants"]), ["Alice", "Bob"]
+        )
+
+    def test_different_codes_are_different_tables(self):
+        a = self.rooms.join("TEAMONE", "Alice", "technical_operations")
+        b = self.rooms.join("TEAMTWO", "Bob", "technical_operations")
+
+        self.assertIsNot(self.rooms.for_token(a), self.rooms.for_token(b))
+        self.assertEqual(self.rooms.codes(), ["TEAMONE", "TEAMTWO"])
+
+    def test_a_table_needs_a_code(self):
+        self.assertIsNone(self.rooms.join("", "Alice", "technical_operations"))
+        self.assertIsNone(self.rooms.join("!!!", "Alice", "technical_operations"))
+        self.assertEqual(self.rooms.codes(), [])
+
+    def test_unknown_tokens_have_no_table(self):
+        self.assertIsNone(self.rooms.for_token(""))
+        self.assertIsNone(self.rooms.for_token("nonsense"))
+        self.assertIsNone(self.rooms.for_token("GHOSTTABLE~abc"))
+
+    def test_a_token_only_unlocks_its_own_table(self):
+        token = self.rooms.join("TEAMONE", "Alice", "technical_operations")
+        self.rooms.join("TEAMTWO", "Bob", "technical_operations")
+
+        room = self.rooms.for_token(token)
+        self.assertEqual(room.code, "TEAMONE")
+        self.assertIsNone(room.personal_state("TEAMTWO~whatever")["you"])
+
+    def test_empty_tables_are_cleaned_up(self):
+        token = self.rooms.join("TEAMONE", "Alice", "technical_operations")
+        self.assertEqual(self.rooms.codes(), ["TEAMONE"])
+
+        self.rooms.for_token(token).leave(token)
+        self.rooms.drop_stale_users()
+
+        self.assertEqual(self.rooms.codes(), [])
+        self.assertIsNone(self.rooms.for_token(token))
+
+    def test_busy_tables_are_kept(self):
+        token = self.rooms.join("TEAMONE", "Alice", "technical_operations")
+        self.rooms.drop_stale_users()
+        self.assertEqual(self.rooms.codes(), ["TEAMONE"])
+        self.assertIsNotNone(self.rooms.for_token(token))
+
+    def test_rejoining_a_cleaned_up_table_starts_fresh(self):
+        first = self.rooms.join("TEAMONE", "Alice", "product_owner")
+        self.rooms.for_token(first).reset(first)
+        self.rooms.for_token(first).leave(first)
+        self.rooms.drop_stale_users()
+
+        second = self.rooms.join("TEAMONE", "Bob", "technical_operations")
+        self.assertEqual(self.rooms.for_token(second).snapshot()["round"], 1)
 
 
 class DeckTests(unittest.TestCase):

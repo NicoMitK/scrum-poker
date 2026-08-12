@@ -12,7 +12,11 @@
   <div id="join-screen" class="overlay">
     <form id="join-form" class="panel">
       <h1>🃏 Scrum Poker</h1>
-      <p class="subtitle">Pick your name and role to sit down at the table.</p>
+      <p class="subtitle">Enter your team ID to sit down at your team's table.</p>
+
+      <label for="join-room">Team ID</label>
+      <input id="join-room" type="text" maxlength="16" placeholder="e.g. TEAM42" autocomplete="off" spellcheck="false" required />
+      <p class="hint">Everybody who enters the same team ID shares one table.</p>
 
       <label for="join-name">Your name</label>
       <input id="join-name" type="text" maxlength="24" placeholder="e.g. Max Mustermann" autocomplete="off" required />
@@ -41,6 +45,7 @@
     <header class="topbar">
       <div class="brand">🃏 Scrum Poker</div>
       <div class="topbar-right">
+        <button id="share-btn" class="pill share" type="button" title="Copy the link to this table">🔗 <span id="room-label">TABLE</span></button>
         <span id="round-label" class="pill">Round 1</span>
         <span id="me-label" class="pill"></span>
         <span id="conn-label" class="pill conn">connecting…</span>
