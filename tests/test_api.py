@@ -121,7 +121,7 @@ class ServerTests(unittest.TestCase):
     def test_deck_is_exposed(self):
         self.assertEqual(
             self.get("/api/state")["deck"],
-            ["0.25", "0.5", "1", "2", "3", "5", "8", "13", "21+", "coffee"],
+            ["0.125", "0.25", "0.5", "1", "2", "3", "5", "8", "13", "21+", "coffee"],
         )
 
     def test_full_round(self):

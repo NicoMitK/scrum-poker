@@ -99,7 +99,7 @@ class DeckTests(unittest.TestCase):
     def test_deck_is_the_agreed_sequence(self):
         self.assertEqual(
             DECK,
-            ["0.25", "0.5", "1", "2", "3", "5", "8", "13", "21+", "coffee"],
+            ["0.125", "0.25", "0.5", "1", "2", "3", "5", "8", "13", "21+", "coffee"],
         )
 
     def test_coffee_is_not_counted(self):
@@ -109,6 +109,7 @@ class DeckTests(unittest.TestCase):
         self.assertEqual(card_value("21+"), 21.0)
 
     def test_plain_numbers_are_parsed(self):
+        self.assertEqual(card_value("0.125"), 0.125)
         self.assertEqual(card_value("0.25"), 0.25)
         self.assertEqual(card_value("13"), 13.0)
 
@@ -217,10 +218,19 @@ class RevealTests(RoomTestCase):
         self.room.vote(skipper, "coffee")
         self.room.reveal(self.po)
         stats = self.room.snapshot()["stats"]
-        self.assertAlmostEqual(stats["average"], 10.62)
+        self.assertAlmostEqual(stats["average"], 10.625)
         self.assertEqual(stats["min"], "0.25")
         self.assertEqual(stats["max"], "21+")
         self.assertFalse(stats["consensus"])
+
+    def test_smallest_card_survives_the_rounding(self):
+        self.room.vote(self.dev_a, "0.125")
+        self.room.vote(self.dev_b, "0.125")
+        self.room.reveal(self.po)
+        stats = self.room.snapshot()["stats"]
+        self.assertEqual(stats["average"], 0.125)
+        self.assertEqual(stats["min"], "0.125")
+        self.assertTrue(stats["consensus"])
 
     def test_consensus_is_detected(self):
         self.room.vote(self.dev_a, "8")

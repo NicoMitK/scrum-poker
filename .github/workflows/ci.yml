@@ -74,7 +74,7 @@ jobs:
       - name: The deck is correct
         run: |
           curl -sf http://127.0.0.1:8000/api/state \
-            | grep -q '"deck": \["0.25", "0.5", "1", "2", "3", "5", "8", "13", "21+", "coffee"\]'
+            | grep -q '"deck": \["0.125", "0.25", "0.5", "1", "2", "3", "5", "8", "13", "21+", "coffee"\]'
 
       - name: Only the Product Owner may reveal
         run: |

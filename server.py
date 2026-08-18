@@ -20,7 +20,7 @@ from urllib.parse import unquote_plus, urlparse
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-DECK = ["0.25", "0.5", "1", "2", "3", "5", "8", "13", "21+", "coffee"]
+DECK = ["0.125", "0.25", "0.5", "1", "2", "3", "5", "8", "13", "21+", "coffee"]
 # Cards without a plain number of their own: "coffee" means "skip / I pass" and is
 # ignored in the statistics, "21+" counts as 21 so it still shapes the average.
 CARD_VALUES = {"21+": 21.0, "coffee": None}
@@ -217,7 +217,8 @@ class Room:
             if self._revealed and counted:
                 numbers = [value for value, _ in counted]
                 stats = {
-                    "average": round(sum(numbers) / len(numbers), 2),
+                    # 3 decimals so an average of 0.125 cards does not collapse to 0.12
+                    "average": round(sum(numbers) / len(numbers), 3),
                     "min": min(counted)[1],
                     "max": max(counted)[1],
                     "consensus": len({card for _, card in counted}) == 1,

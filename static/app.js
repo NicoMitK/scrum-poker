@@ -259,6 +259,13 @@ function cardLabel(value) {
   return CARD_LABELS[value] || value;
 }
 
+/* Cards have a fixed width, so a long label like "0.125" needs a smaller font. */
+function setCardFace(element, value) {
+  const text = cardLabel(value);
+  element.textContent = text;
+  element.classList.toggle("long", text.length >= 5);
+}
+
 function requiredVoters(participants) {
   return participants.filter((p) => p.role === "technical_operations");
 }
@@ -301,7 +308,7 @@ function renderSeats() {
       card.title = "The Product Owner does not estimate";
     } else if (state.revealed && participant.vote !== null) {
       card.classList.add("revealed");
-      card.textContent = cardLabel(participant.vote);
+      setCardFace(card, participant.vote);
     } else if (participant.hasVoted) {
       card.classList.add("hidden-vote");
       card.textContent = "\u2713";
@@ -420,7 +427,7 @@ function renderHandArea() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "card";
-    button.textContent = cardLabel(value);
+    setCardFace(button, value);
     const meaning =
       value === "coffee"
         ? "Skip — no estimate from me"
