@@ -1,6 +1,9 @@
 # 🃏 Scrum Poker
 
-Real-time planning poker for the team.
+[![LIVE — open the app](https://img.shields.io/badge/LIVE-open%20the%20app-brightgreen?style=for-the-badge&logo=render&logoColor=white)](https://scrum-poker-gtbf.onrender.com/)
+
+Real-time planning poker for the team. Runs at
+**<https://scrum-poker-gtbf.onrender.com/>** — no login, no install.
 
 ## Join a table
 
@@ -12,8 +15,9 @@ Enter a **team ID** (e.g. `TEAM42`) and your name, then pick your role:
 Everybody who enters the same team ID sits at the same table. Different team IDs never see
 each other. Team IDs are case-insensitive, up to 16 characters.
 
-Use the 🔗 button in the top bar to copy the table link (`.../table/TEAM42`) and send it to
-the team — it fills in the team ID for them.
+Use the 🔗 button in the top bar to copy the table link
+(`https://scrum-poker-gtbf.onrender.com/table/TEAM42`) and send it to the team — it fills in
+the team ID for them.
 
 ## Estimate
 
